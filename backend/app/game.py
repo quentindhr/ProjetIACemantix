@@ -1,19 +1,16 @@
 from typing import Dict, List, Optional, Tuple
 from uuid import uuid4
 import random
-import os
-
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
+import spacy
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Optionnel : utiliser sentence-transformers pour un meilleur score sémantique
-USE_ST_MODEL = os.getenv("USE_ST_MODEL", "0") == "1"
-if USE_ST_MODEL:
-    try:
-        from sentence_transformers import SentenceTransformer  # type: ignore
-    except Exception:
-        USE_ST_MODEL = False
+# Chargement du modèle de langue (contient les vecteurs sémantiques)
+print("Chargement du modèle spaCy...")
+try:
+    nlp = spacy.load("fr_core_news_md")
+except OSError:
+    raise RuntimeError("Le modèle 'fr_core_news_md' n'est pas trouvé. Lancez: python -m spacy download fr_core_news_md")
 
 class Game:
     def __init__(self, target: str, max_attempts: int = 6):
@@ -21,7 +18,7 @@ class Game:
         self.target = target
         self.attempts: int = 0
         self.max_attempts = max_attempts
-        self.guesses: List[Tuple[str, float]] = []  # (guess, score)
+        self.guesses: List[Tuple[str, float]] = [] 
         self.finished: bool = False
         self.won: bool = False
 
@@ -29,113 +26,110 @@ class GameManager:
     def __init__(self, vocab: List[str]):
         self.vocab = vocab
         self.games: Dict[str, Game] = {}
-        # TF-IDF vectorizer (traitement simple, léger)
-        self.vectorizer = TfidfVectorizer(lowercase=True, stop_words="french")
-        self.vocab_vectors = None
-        self._fit_tfidf()
-        # modèle sémantique optionnel
-        self.st_model = None
-        if USE_ST_MODEL:
-            try:
-                self.st_model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
-            except Exception:
-                self.st_model = None
-
-    def _fit_tfidf(self):
-        # On considère chaque mot du vocabulaire comme un "document"
-        try:
-            self.vectorizer.fit(self.vocab)
-            self.vocab_vectors = self.vectorizer.transform(self.vocab)
-        except Exception:
-            # Fallback minimal pour éviter crash si vocab contient caractères problématiques
-            self.vectorizer = TfidfVectorizer(lowercase=True)
-            self.vectorizer.fit(self.vocab)
-            self.vocab_vectors = self.vectorizer.transform(self.vocab)
+        
+        # 1. Prétraitement : On ne garde que les mots connus du modèle spaCy
+        # pour éviter les erreurs ou les vecteurs vides (zéro)
+        self.valid_vocab = []
+        vectors_list = []
+        
+        print("Indexation du vocabulaire...")
+        # nlp.pipe est plus rapide pour traiter une liste
+        for doc in nlp.pipe(self.vocab):
+            # On ne garde que si le mot a un vecteur valide
+            if doc.has_vector and doc.vector_norm > 0:
+                self.valid_vocab.append(doc.text)
+                vectors_list.append(doc.vector)
+        
+        self.vocab = self.valid_vocab
+        # Matrice numpy contenant tous les vecteurs du vocabulaire
+        self.vocab_vectors = np.array(vectors_list)
+        print(f"Vocabulaire chargé : {len(self.vocab)} mots vectorisés.")
 
     def start_game(self, target: Optional[str] = None, max_attempts: int = 6) -> Game:
         if target is None:
             target = random.choice(self.vocab)
+        # Si la cible demandée n'est pas dans notre vocabulaire vectorisé, on fallback
+        if target not in self.vocab:
+             # On essaye de trouver le mot s'il existe quand même dans spacy
+             if not nlp(target).has_vector:
+                 raise ValueError(f"Le mot cible '{target}' n'est pas connu du modèle sémantique.")
+        
         g = Game(target=target, max_attempts=max_attempts)
         self.games[g.id] = g
         return g
-
-    def _tfidf_score(self, a: str, b: str) -> float:
-        vecs = self.vectorizer.transform([a, b])
-        sim = cosine_similarity(vecs[0], vecs[1])[0][0]
-        return float(sim)
-
-    def _semantic_score(self, a: str, b: str) -> float:
-        if self.st_model is None:
-            return self._tfidf_score(a, b)
-        emb = self.st_model.encode([a, b])
-        sim = cosine_similarity([emb[0]], [emb[1]])[0][0]
-        return float(sim)
 
     def score_guess(self, game_id: str, guess: str) -> Dict:
         if game_id not in self.games:
             raise KeyError("Partie introuvable")
         game = self.games[game_id]
+        
         if game.finished:
-            return {"error": "Partie déjà terminée", "finished": True, "won": game.won, "target": game.target}
+            return {"error": "Partie terminée", "finished": True, "won": game.won, "target": game.target}
 
         game.attempts += 1
         guess_norm = guess.strip()
+        
+        # --- Calcul du Score ---
+        target_doc = nlp(game.target)
+        guess_doc = nlp(guess_norm)
 
-        # calcul du score entre la proposition et la cible
-        if USE_ST_MODEL and self.st_model:
-            score = self._semantic_score(guess_norm, game.target)
+        # Si le mot n'a pas de vecteur (mot inconnu / faute de frappe)
+        if not guess_doc.has_vector or guess_doc.vector_norm == 0:
+            score = 0.0
         else:
-            score = self._tfidf_score(guess_norm, game.target)
+            # score de similarité (entre 0 et 1)
+            score = float(target_doc.similarity(guess_doc))
 
-        # calcul des similarités entre la cible et tout le vocabulaire pour obtenir un "rang"
-        try:
-            if USE_ST_MODEL and self.st_model:
-                all_emb = self.st_model.encode(self.vocab + [game.target])
-                tgt_emb = all_emb[-1]
-                vocab_embs = all_emb[:-1]
-                sims = cosine_similarity([tgt_emb], vocab_embs)[0]
-            else:
-                tgt_vec = self.vectorizer.transform([game.target])
-                sims = cosine_similarity(tgt_vec, self.vocab_vectors)[0]
-        except Exception:
-            # fallback : comparer chacun avec TF-IDF si quelque chose casse
-            sims = np.array([self._tfidf_score(w, game.target) for w in self.vocab])
-
-        # score de la proposition si elle est dans le vocab sinon utiliser le score calculé
+        # --- Calcul du Rang (Top 1000, etc.) ---
+        # On compare le vecteur de la CIBLE avec tout le VOCABULAIRE
+        # target_vec shape: (1, 300), vocab_vectors shape: (N, 300)
+        
+        target_vec = target_doc.vector.reshape(1, -1)
+        
+        # Similarité cosinus entre la cible et TOUS les mots du vocabulaire
+        # Cela renvoie un tableau [0.1, 0.5, 0.9, ...]
+        sims = cosine_similarity(target_vec, self.vocab_vectors)[0]
+        
+        # Si le mot deviné est dans le vocabulaire, on utilise sa similarité précise issue du tableau
+        # pour s'assurer que le classement est cohérent
         if guess_norm in self.vocab:
-            guess_idx = self.vocab.index(guess_norm)
-            guess_score = float(sims[guess_idx])
-        else:
-            guess_score = float(score)
+            idx = self.vocab.index(guess_norm)
+            guess_score_in_vocab = sims[idx]
+            # On met à jour le score affiché pour qu'il corresponde exactement au classement
+            score = float(guess_score_in_vocab)
 
-        # rang : combien d'éléments dans vocab ont une similarité >= guess_score
-        sorted_sims = np.sort(sims)[::-1]
-        rank = int((sorted_sims >= guess_score).sum())
+        # Combien de mots ont un score supérieur à ma proposition ?
+        # C'est le rang (ex: si 5 mots sont meilleurs, je suis 6ème)
+        rank = int(np.sum(sims > score)) + 1
 
-        game.guesses.append((guess_norm, float(score)))
+        # Mise à jour état du jeu
+        game.guesses.append((guess_norm, score))
 
-        if guess_norm.lower() == game.target.strip().lower():
+        # Condition de victoire (Score très proche de 1 ou mot identique)
+        if guess_norm.lower() == game.target.lower():
+            score = 1.0 # Force 1.0
+            rank = 1
             game.finished = True
             game.won = True
         elif game.attempts >= game.max_attempts:
             game.finished = True
             game.won = False
 
-        top_k_idx = sims.argsort()[::-1][:10]
-        top_k = [{"word": self.vocab[i], "sim": float(sims[i])} for i in top_k_idx]
+        # Récupérer les mots les plus proches pour info (optionnel, aide au debug)
+        # top_k_idx = sims.argsort()[::-1][:10]
+        # top_k = [{"word": self.vocab[i], "sim": float(sims[i])} for i in top_k_idx]
 
         return {
             "game_id": game.id,
             "guess": guess_norm,
-            "score": float(score),
+            "score": round(score * 100, 2), # En pourcentage souvent plus lisible (0-100)
             "rank": rank,
             "attempts": game.attempts,
             "remaining": max(0, game.max_attempts - game.attempts),
             "finished": game.finished,
             "won": game.won,
             "target": game.target if game.finished else None,
-            "top_similaires": top_k,
-            "history": [{"guess": g, "score": s} for g, s in game.guesses],
+            "history": [{"guess": g, "score": round(s * 100, 2)} for g, s in game.guesses],
         }
 
     def get_vocab(self, limit: int = 200) -> List[str]:
