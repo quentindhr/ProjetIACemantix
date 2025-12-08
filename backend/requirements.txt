@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+scikit-learn
+numpy
+python-multipart
+pydantic
+# Optional semantic model (commenter si tu veux rester léger)
+sentence-transformers

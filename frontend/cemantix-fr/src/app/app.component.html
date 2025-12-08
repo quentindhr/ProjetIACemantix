@@ -1,0 +1,44 @@
+<div class="container">
+  <h1>Cemantix léger (FR)</h1>
+
+  <div class="controls">
+    <label>Nombre d'essais max :
+      <input type="number" [(ngModel)]="maxAttempts" min="1" max="20">
+    </label>
+    <button (click)="newGame()">Nouvelle partie</button>
+  </div>
+
+  <div *ngIf="gameId" class="game-area">
+    <p><strong>ID de partie :</strong> {{gameId}}</p>
+    <p><strong>Essais restants :</strong> {{remaining}}</p>
+
+    <div class="guess">
+      <input [(ngModel)]="guessText" placeholder="Entrez un mot en français" (keyup.enter)="submitGuess()">
+      <button (click)="submitGuess()">Proposer</button>
+    </div>
+
+    <div class="message" *ngIf="message">
+      {{message}}
+    </div>
+
+    <div class="history" *ngIf="history.length">
+      <h3>Historique</h3>
+      <table>
+        <thead><tr><th>Proposition</th><th>Score</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let row of history">
+            <td>{{row.guess}}</td>
+            <td>{{row.score}}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="top" *ngIf="topSimilaires.length">
+      <h4>Mots proches (top)</h4>
+      <ul>
+        <li *ngFor="let t of topSimilaires">{{t.word}} ({{(t.sim | number:'1.3-3')}})</li>
+      </ul>
+    </div>
+  </div>
+</div>
