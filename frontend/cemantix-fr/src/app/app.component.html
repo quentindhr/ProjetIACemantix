@@ -1,44 +1,75 @@
 <div class="container">
-  <h1>Cemantix léger (FR)</h1>
+  <div class="header">
+    <h1>🎯 Cemantix</h1>
+    <p class="subtitle">Trouvez le mot secret grâce à la proximité sémantique</p>
+  </div>
 
-  <div class="controls">
-    <label>Nombre d'essais max :
-      <input type="number" [(ngModel)]="maxAttempts" min="1" max="20">
-    </label>
-    <button (click)="newGame()">Nouvelle partie</button>
+  <div class="controls-card">
+    <div class="controls">
+      <label class="control-label">
+        Nombre d'essais max :
+        <input type="number" [(ngModel)]="maxAttempts" min="1" max="20" class="control-input">
+      </label>
+      <button (click)="newGame()" class="btn-primary">🎲 Nouvelle partie</button>
+    </div>
   </div>
 
   <div *ngIf="gameId" class="game-area">
-    <p><strong>ID de partie :</strong> {{gameId}}</p>
-    <p><strong>Essais restants :</strong> {{remaining}}</p>
-
-    <div class="guess">
-      <input [(ngModel)]="guessText" placeholder="Entrez un mot en français" (keyup.enter)="submitGuess()">
-      <button (click)="submitGuess()">Proposer</button>
+    <div class="game-info">
+      <div class="info-badge">
+        <span class="info-label">Partie</span>
+        <span class="info-value">{{gameId}}</span>
+      </div>
+      <div class="info-badge" [class.danger]="remaining <= 2">
+        <span class="info-label">Essais restants</span>
+        <span class="info-value">{{remaining}}</span>
+      </div>
     </div>
 
-    <div class="message" *ngIf="message">
-      {{message}}
+    <div class="guess-card">
+      <div class="guess">
+        <input [(ngModel)]="guessText" placeholder="Entrez un mot en français..." (keyup.enter)="submitGuess()" class="guess-input" [disabled]="finished">
+        <button (click)="submitGuess()" class="btn-submit" [disabled]="finished">
+          ✨ Proposer
+        </button>
+      </div>
     </div>
 
-    <div class="history" *ngIf="history.length">
-      <h3>Historique</h3>
-      <table>
-        <thead><tr><th>Proposition</th><th>Score</th></tr></thead>
-        <tbody>
-          <tr *ngFor="let row of history">
-            <td>{{row.guess}}</td>
-            <td>{{row.score}}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div class="message-card" *ngIf="message" [class.success]="won" [class.warning]="finished && !won">
+      <span class="message-icon">{{won ? '🎉' : finished ? '😔' : 'ℹ️'}}</span>
+      <span>{{message}}</span>
     </div>
 
-    <div class="top" *ngIf="topSimilaires.length">
-      <h4>Mots proches (top)</h4>
-      <ul>
-        <li *ngFor="let t of topSimilaires">{{t.word}} ({{(t.sim | number:'1.3-3')}})</li>
-      </ul>
+    <div class="history-card" *ngIf="history.length">
+      <h3 class="section-title">📊 Vos propositions</h3>
+      <div class="history-grid">
+        <div *ngFor="let row of history" class="history-item">
+          <div class="history-header">
+            <span class="word">{{row.guess}}</span>
+            <span class="score">{{row.score}}</span>
+          </div>
+          <div class="proximity-gauge-container">
+            <div class="proximity-gauge">
+              <div class="gauge-fill" 
+                   [style.width.%]="getProximityPercentage(row.score)"
+                   [style.background-color]="getGaugeColor(row.score)"
+                   [class.pulse]="isVeryClose(row.score)">
+              </div>
+            </div>
+            <span class="percentage">{{getProximityPercentage(row.score).toFixed(1)}}%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="top-card" *ngIf="topSimilaires.length">
+      <h4 class="section-title">🔥 Mots les plus proches</h4>
+      <div class="top-list">
+        <div *ngFor="let t of topSimilaires" class="top-item">
+          <span class="top-word">{{t.word}}</span>
+          <span class="top-score">{{(t.sim * 100).toFixed(1)}}%</span>
+        </div>
+      </div>
     </div>
   </div>
 </div>
