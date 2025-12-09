@@ -9,7 +9,7 @@ import { ApiService } from './api.service';
   imports: [CommonModule, FormsModule],
   selector: 'app-root',
   templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css']
+  styleUrls: ['./app.component.scss']
 })
 export class AppComponent {
   gameId: string | null = null;
@@ -71,7 +71,9 @@ export class AppComponent {
 
   // Calculate percentage from score (assuming score is between 0 and 1)
   getProximityPercentage(score: number): number {
-    return Math.max(0, Math.min(100, score * 100));
+    if (score < 0) return 0;
+    if (score > 100) return 100;
+    return score
   }
 
   // Determine gauge color based on score
