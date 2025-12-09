@@ -37,6 +37,24 @@ class GuessPayload(BaseModel):
     game_id: str
     guess: str
 
+@app.get("/game/{game_id}")
+def get_game_status(game_id: str):
+    """Récupère le statut et l'historique d'une partie sans faire de guess"""
+    if game_id not in game_manager.games:
+        raise HTTPException(status_code=404, detail="Partie non trouvée")
+    
+    game = game_manager.games[game_id]
+    
+    return {
+        "game_id": game. id,
+        "attempts": game.attempts,
+        "max_attempts": game.max_attempts,
+        "finished": game. finished,
+        "won": game.won,
+        "target":  game.target if game.finished else None,
+        "history": [{"guess": g, "score": round(s * 100, 2)} for g, s in game.guesses]
+    }
+
 @app.post("/start")
 def start_game(p: StartPayload):
     if p.target and p.target not in vocab:
