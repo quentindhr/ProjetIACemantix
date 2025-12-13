@@ -23,4 +23,14 @@ export class ApiService {
   getVocab(limit: number = 200): Observable<any> {
     return this.http.get<any>(`${this.apiUrl}/vocab?limit=${limit}`);
   }
+  aiSolve(game_id: string, useLLM: boolean = false, llmModel: string = 'ollama'): Observable<any> {
+    return this.http.post<any>(`${this.apiUrl}/ai/solve`, { 
+      game_id, 
+      use_llm: useLLM,
+      llm_model: llmModel
+    });
+  }
+  getGameStatus(game_id: string): Observable<any> {
+    return this.http.get<any>(`${this.apiUrl}/game/${game_id}`);
+  }
 }

@@ -18,7 +18,7 @@ class Game:
         self.target = target
         self.attempts: int = 0
         self.max_attempts = max_attempts
-        self.guesses: List[Tuple[str, float]] = [] 
+        self.guesses: List[Tuple[str, float, int]] = []  # (guess, score, rank) 
         self.finished: bool = False
         self.won: bool = False
 
@@ -103,7 +103,7 @@ class GameManager:
         rank = int(np.sum(sims > score)) + 1
 
         # Mise à jour état du jeu
-        game.guesses.append((guess_norm, score))
+        game.guesses.append((guess_norm, score, rank))
 
         # Condition de victoire (Score très proche de 1 ou mot identique)
         if guess_norm.lower() == game.target.lower():
@@ -129,7 +129,7 @@ class GameManager:
             "finished": game.finished,
             "won": game.won,
             "target": game.target if game.finished else None,
-            "history": [{"guess": g, "score": round(s * 100, 2)} for g, s in game.guesses],
+            "history": [{"guess": g, "score": round(s * 100, 2), "rank": r} for g, s, r in game.guesses],
         }
 
     def get_vocab(self, limit: int = 200) -> List[str]:

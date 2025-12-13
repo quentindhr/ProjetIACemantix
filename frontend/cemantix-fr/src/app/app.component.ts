@@ -19,8 +19,10 @@ export class AppComponent {
   remaining = 0;
   finished = false;
   won = false;
+  targetWord: string | null = null;
   message = '';
   topSimilaires: any[] = [];
+  aiSolving = false;
 
   constructor(private api: ApiService) {}
 
@@ -31,6 +33,7 @@ export class AppComponent {
       this.remaining = res.max_attempts;
       this.finished = false;
       this.won = false;
+      this.targetWord = null;
       this.message = 'Nouvelle partie démarrée. Bonne chance !';
     }, err => {
       this.message = 'Erreur démarrage partie : ' + (err.error?.detail ?? err.message);
@@ -52,16 +55,27 @@ export class AppComponent {
         this.message = res.error;
         return;
       }
-      this.history = res.history.map((h: any) => ({ guess: h.guess, score: Math.round(h.score * 1000) / 1000 }))
-        .sort((a: any, b: any) => b.score - a.score); // Sort by score descending
+      // Mapper l'historique avec les informations
+      const historyMapped = res.history.map((h: any, index: number) => ({ 
+        guess: h.guess, 
+        score: h.score, // Le score est déjà en pourcentage (0-100)
+        rank: h.rank || res.rank, // Utiliser le rang de l'historique ou celui du dernier guess
+        attempt: index + 1
+      }));
+      
+      // Trier par score décroissant
+      this.history = historyMapped.sort((a: any, b: any) => b.score - a.score);
+      
       this.remaining = res.remaining;
       this.finished = res.finished;
       this.won = res.won;
+      this.targetWord = res.target || null;
       this.topSimilaires = res.top_similaires || [];
+      
       if (res.finished) {
-        this.message = res.won ? `Bravo ! Vous avez trouvé : ${res.target}` : `Partie terminée. Le mot était : ${res.target}`;
+        this.message = res.won ? `🎉 Bravo ! Vous avez trouvé le mot !` : `😔 Partie terminée`;
       } else {
-        this.message = `Score: ${Math.round(res.score * 1000) / 1000} — Rang approximatif: ${res.rank}`;
+        this.message = `Score: ${res.score.toFixed(1)}% — Rang: ${res.rank}`;
       }
       this.guessText = '';
     }, err => {
@@ -89,5 +103,61 @@ export class AppComponent {
   // Check if score is very high (for pulse animation)
   isVeryClose(score: number): boolean {
     return this.getProximityPercentage(score) > 90;
+  }
+
+  aiSolve() {
+    if (!this.gameId) {
+      this.message = "D'abord démarrer une partie";
+      return;
+    }
+    if (this.finished) {
+      this.message = "La partie est déjà terminée";
+      return;
+    }
+    
+    this.aiSolving = true;
+    this.message = '🤖 L\'IA résout la partie...';
+    
+    this.api.aiSolve(this.gameId).subscribe(res => {
+      this.aiSolving = false;
+      
+      if (res.success) {
+        this.message = `🤖 L'IA a trouvé le mot en ${res.attempts} essai(s) !`;
+        // Rafraîchir l'état de la partie
+        this.refreshGameState();
+      } else {
+        if (res.error) {
+          this.message = `❌ Erreur IA: ${res.error}`;
+        } else {
+          this.message = `🤖 L'IA n'a pas trouvé le mot en ${res.attempts} essai(s)`;
+          this.refreshGameState();
+        }
+      }
+    }, err => {
+      this.aiSolving = false;
+      this.message = 'Erreur lors de la résolution IA : ' + (err.error?.detail ?? err.message);
+    });
+  }
+
+  refreshGameState() {
+    if (!this.gameId) return;
+    
+    // Récupérer l'état actuel de la partie
+    this.api.getGameStatus(this.gameId).subscribe(res => {
+      const historyMapped = res.history.map((h: any, index: number) => ({ 
+        guess: h.guess, 
+        score: h.score,
+        rank: h.rank,
+        attempt: index + 1
+      }));
+      
+      this.history = historyMapped.sort((a: any, b: any) => b.score - a.score);
+      this.remaining = res.max_attempts - res.attempts;
+      this.finished = res.finished;
+      this.won = res.won;
+      this.targetWord = res.target || null;
+    }, err => {
+      console.error('Erreur lors du rafraîchissement:', err);
+    });
   }
 }

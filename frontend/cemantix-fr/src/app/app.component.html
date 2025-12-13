@@ -1,3 +1,11 @@
+<div class="background-decoration">
+  <div class="floating-shape shape-1"></div>
+  <div class="floating-shape shape-2"></div>
+  <div class="floating-shape shape-3"></div>
+  <div class="floating-shape shape-4"></div>
+  <div class="floating-shape shape-5"></div>
+</div>
+
 <div class="container">
   <div class="header">
     <h1>🎯 Cemantix</h1>
@@ -11,6 +19,10 @@
         <input type="number" [(ngModel)]="maxAttempts" min="1" max="20" class="control-input">
       </label>
       <button (click)="newGame()" class="btn-primary">🎲 Nouvelle partie</button>
+      <button (click)="aiSolve()" class="btn-ai" [disabled]="!gameId || finished || aiSolving">
+        <span *ngIf="!aiSolving">🤖 IA résout</span>
+        <span *ngIf="aiSolving">⏳ Résolution...</span>
+      </button>
     </div>
   </div>
 
@@ -40,13 +52,31 @@
       <span>{{message}}</span>
     </div>
 
+    <div class="target-card" *ngIf="finished && targetWord">
+      <div class="target-content">
+        <h3 class="target-label">🎯 Le mot à trouver était :</h3>
+        <div class="target-word-display" [class.won]="won">
+          <span class="target-word-text">{{targetWord}}</span>
+        </div>
+      </div>
+    </div>
+
     <div class="history-card" *ngIf="history.length">
       <h3 class="section-title">📊 Vos propositions</h3>
       <div class="history-grid">
-        <div *ngFor="let row of history" class="history-item">
+        <div *ngFor="let row of history; let i = index" class="history-item" [class.best-score]="i === 0">
           <div class="history-header">
-            <span class="word">{{row.guess}}</span>
-            <span class="score">{{row.score}}</span>
+            <div class="history-left">
+              <span class="attempt-number">Essai {{row.attempt}}</span>
+              <span class="word">
+                {{row.guess}}
+                <span class="best-badge" *ngIf="i === 0">🏆</span>
+              </span>
+            </div>
+            <div class="history-right">
+              <span class="score">{{row.score.toFixed(1)}}%</span>
+              <span class="rank" *ngIf="row.rank">Rang: {{row.rank}}</span>
+            </div>
           </div>
           <div class="proximity-gauge-container">
             <div class="proximity-gauge">
@@ -56,7 +86,7 @@
                    [class.pulse]="isVeryClose(row.score)">
               </div>
             </div>
-            <span class="percentage">{{getProximityPercentage(row.score).toFixed(1)}}%</span>
+            <span class="percentage">{{row.score.toFixed(1)}}%</span>
           </div>
         </div>
       </div>
